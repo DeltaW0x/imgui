@@ -25,14 +25,14 @@
     <ClCompile Include="..\..\backends\imgui_impl_sdl3.cpp">
       <Filter>sources</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\backends\imgui_impl_opengl3.cpp">
-      <Filter>sources</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\imgui_tables.cpp">
       <Filter>imgui</Filter>
     </ClCompile>
     <ClCompile Include="..\..\imgui_widgets.cpp">
       <Filter>imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\backends\imgui_impl_sdlgpu.cpp">
+      <Filter>sources</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -48,10 +48,7 @@
     <ClInclude Include="..\..\backends\imgui_impl_sdl3.h">
       <Filter>sources</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\backends\imgui_impl_opengl3.h">
-      <Filter>sources</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\backends\imgui_impl_opengl3_loader.h">
+    <ClInclude Include="..\..\backends\imgui_impl_sdlgpu.h">
       <Filter>sources</Filter>
     </ClInclude>
   </ItemGroup>
