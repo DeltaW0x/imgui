@@ -268,22 +268,13 @@ void ImGui_ImplSDLGpu_RenderDrawData(ImDrawData* draw_data, SDL_GpuRenderPass* r
 		uint32_t vertexBufferSize = draw_data->TotalVtxCount * sizeof(ImDrawVert);
 		uint32_t indexBufferSize = draw_data->TotalIdxCount * sizeof(ImDrawIdx);
 
-		if (bd->VertexBuffer == NULL) {
-			bd->VertexBuffer = SDL_GpuCreateGpuBuffer(v->Device, SDL_GPU_BUFFERUSAGE_VERTEX_BIT, vertexBufferSize);
-			bd->VertexBufferSize = vertexBufferSize;
-		}
-		if (bd->IndexBuffer == NULL) {
-			bd->IndexBuffer = SDL_GpuCreateGpuBuffer(v->Device, SDL_GPU_BUFFERUSAGE_INDEX_BIT, indexBufferSize);
-			bd->IndexBufferSize = indexBufferSize;
-		}
-
-		if (bd->VertexBuffer != NULL && bd->VertexBufferSize < vertexBufferSize) {
+		if (bd->VertexBuffer == NULL || bd->VertexBufferSize < vertexBufferSize) {
 			SDL_GpuQueueDestroyGpuBuffer(v->Device, bd->VertexBuffer);
 			SDL_GpuWait(v->Device);
 			bd->VertexBuffer = SDL_GpuCreateGpuBuffer(v->Device, SDL_GPU_BUFFERUSAGE_VERTEX_BIT, vertexBufferSize);
 			bd->VertexBufferSize = vertexBufferSize;
 		}
-		if (bd->IndexBuffer != NULL && bd->IndexBufferSize < indexBufferSize) {
+		if (bd->IndexBuffer == NULL || bd->IndexBufferSize < indexBufferSize) {
 			SDL_GpuQueueDestroyGpuBuffer(v->Device, bd->IndexBuffer);
 			SDL_GpuWait(v->Device);
 			bd->IndexBuffer = SDL_GpuCreateGpuBuffer(v->Device, SDL_GPU_BUFFERUSAGE_INDEX_BIT, indexBufferSize);
@@ -387,7 +378,6 @@ void ImGui_ImplSDLGpu_RenderDrawData(ImDrawData* draw_data, SDL_GpuRenderPass* r
 				{
 					continue;
 				}
-
 
 				SDL_GpuRect scissor;
 				scissor.x = (int32_t)clip_min.x;
