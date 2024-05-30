@@ -9,28 +9,24 @@
 #error This backend requires SDL 3.0.0+
 #endif
 
-
 struct ImGui_ImplSDLGpu_Data
 {
 	ImGui_ImplSDLGpu_InitInfo                            SDLGpuInitInfo             = {};
-	SDL_GpuGraphicsPipeline*                             Pipeline                   = nullptr;
-	SDL_GpuBuffer*                                       VertexBuffer               = nullptr;
-	SDL_GpuBuffer*                                       IndexBuffer                = nullptr;
+	SDL_GpuGraphicsPipeline*                             Pipeline                   = NULL;
+	SDL_GpuBuffer*                                       VertexBuffer               = NULL;
+	SDL_GpuBuffer*                                       IndexBuffer                = NULL;
 	uint32_t                                             VertexBufferSize           = 0;
 	uint32_t                                             IndexBufferSize            = 0;
-	SDL_GpuSampler*                                      FontSampler                = nullptr;
-	SDL_GpuTexture*                                      FontImage                  = nullptr;
+	SDL_GpuSampler*                                      FontSampler                = NULL;
+	SDL_GpuTexture*                                      FontImage                  = NULL;
 	SDL_GpuTextureSamplerBinding                         FontTextureSamplerBindings = {};
 };
-
-
-bool ImGui_ImplSDLGpu_CreateDeviceObjects();
-void ImGui_ImplSDLGpu_DestroyDeviceObjects();
 
 static ImGui_ImplSDLGpu_Data* ImGui_ImplSDLGpu_GetBackendData()
 {
 	return ImGui::GetCurrentContext() ? (ImGui_ImplSDLGpu_Data*)ImGui::GetIO().BackendRendererUserData : nullptr;
 }
+
 static void ImGui_ImplSDLGpu_SetupRenderState(ImDrawData* draw_data, SDL_GpuRenderPass* renderPass, int fb_width, int fb_height)
 {
 	ImGui_ImplSDLGpu_Data* bd = ImGui_ImplSDLGpu_GetBackendData();
@@ -66,6 +62,233 @@ static void ImGui_ImplSDLGpu_SetupRenderState(ImDrawData* draw_data, SDL_GpuRend
 	ubo.translation[1] = -1.0f - draw_data->DisplayPos.y * ubo.scale[1];
 	SDL_GpuPushVertexUniformData(renderPass, 0, (void*)&ubo, sizeof(ubo));
 }
+void ImGui_ImplSDLGpu_RenderDrawData(ImDrawData* draw_data, SDL_GpuRenderPass* renderPass)
+{
+
+	int fb_width = (int)(draw_data->DisplaySize.x * draw_data->FramebufferScale.x);
+	int fb_height = (int)(draw_data->DisplaySize.y * draw_data->FramebufferScale.y);
+	if (fb_width <= 0 || fb_height <= 0)
+	{
+		return;
+	}
+
+	ImGui_ImplSDLGpu_Data* bd = ImGui_ImplSDLGpu_GetBackendData();
+	ImGui_ImplSDLGpu_InitInfo* v = &bd->SDLGpuInitInfo;
+
+	if (draw_data->TotalVtxCount > 0)
+	{
+		uint32_t vertexBufferSize = draw_data->TotalVtxCount * sizeof(ImDrawVert);
+		uint32_t indexBufferSize = draw_data->TotalIdxCount * sizeof(ImDrawIdx);
+
+		if (bd->VertexBuffer == NULL) {
+			bd->VertexBuffer = SDL_GpuCreateGpuBuffer(v->Device, SDL_GPU_BUFFERUSAGE_VERTEX_BIT, vertexBufferSize);
+			bd->VertexBufferSize = vertexBufferSize;
+		}
+		if (bd->IndexBuffer == NULL) {
+			bd->IndexBuffer = SDL_GpuCreateGpuBuffer(v->Device, SDL_GPU_BUFFERUSAGE_INDEX_BIT, indexBufferSize);
+			bd->IndexBufferSize = indexBufferSize;
+		}
+
+		if (bd->VertexBuffer != NULL || bd->VertexBufferSize < vertexBufferSize) {
+			SDL_GpuQueueDestroyGpuBuffer(v->Device, bd->VertexBuffer);
+			SDL_GpuWait(v->Device);
+			bd->VertexBuffer = SDL_GpuCreateGpuBuffer(v->Device, SDL_GPU_BUFFERUSAGE_VERTEX_BIT, vertexBufferSize);
+			bd->VertexBufferSize = vertexBufferSize;
+		}
+		if (bd->IndexBuffer != NULL || bd->IndexBufferSize < indexBufferSize) {
+			SDL_GpuQueueDestroyGpuBuffer(v->Device, bd->IndexBuffer);
+			SDL_GpuWait(v->Device);
+			bd->IndexBuffer = SDL_GpuCreateGpuBuffer(v->Device, SDL_GPU_BUFFERUSAGE_INDEX_BIT, indexBufferSize);
+			bd->IndexBufferSize = indexBufferSize;
+		}
+
+
+		// Upload vertex/index data into a single contiguous GPU buffer
+		ImDrawVert* vtx_dst = nullptr;
+		ImDrawIdx* idx_dst = nullptr;
+
+		SDL_GpuCommandBuffer* copyCommandBuffer = SDL_GpuAcquireCommandBuffer(v->Device);
+
+		SDL_GpuCopyPass* vertexCopyPass = SDL_GpuBeginCopyPass(copyCommandBuffer);
+		SDL_GpuBufferCopy vertexBufferCopy;
+		vertexBufferCopy.size = vertexBufferSize;
+		vertexBufferCopy.srcOffset = 0;
+		vertexBufferCopy.dstOffset = 0;
+
+
+		SDL_GpuTransferBuffer* vertexTransferBuffer = SDL_GpuCreateTransferBuffer(v->Device,
+			SDL_GPU_TRANSFERUSAGE_BUFFER,
+			SDL_GPU_TRANSFER_MAP_WRITE,
+			vertexBufferSize);
+
+		SDL_GpuMapTransferBuffer(v->Device, vertexTransferBuffer, SDL_FALSE, (void**)&vtx_dst);
+		for (int n = 0; n < draw_data->CmdListsCount; n++)
+		{
+			const ImDrawList* cmd_list = draw_data->CmdLists[n];
+			memcpy(vtx_dst, cmd_list->VtxBuffer.Data, cmd_list->VtxBuffer.Size * sizeof(ImDrawVert));
+			vtx_dst += cmd_list->VtxBuffer.Size;
+		}
+		SDL_GpuUnmapTransferBuffer(v->Device, vertexTransferBuffer);
+		SDL_GpuUploadToBuffer(vertexCopyPass, vertexTransferBuffer, bd->VertexBuffer, &vertexBufferCopy, SDL_FALSE);
+		SDL_GpuEndCopyPass(vertexCopyPass);
+
+		SDL_GpuCopyPass* indexCopyPass = SDL_GpuBeginCopyPass(copyCommandBuffer);
+
+		SDL_GpuBufferCopy indexBufferCopy = {};
+		indexBufferCopy.size = indexBufferSize;
+		indexBufferCopy.srcOffset = 0;
+		indexBufferCopy.dstOffset = 0;
+
+		SDL_GpuTransferBuffer* indexTransferBuffer = SDL_GpuCreateTransferBuffer(v->Device,
+			SDL_GPU_TRANSFERUSAGE_BUFFER,
+			SDL_GPU_TRANSFER_MAP_WRITE,
+			indexBufferSize);
+
+		SDL_GpuMapTransferBuffer(v->Device, indexTransferBuffer, SDL_FALSE, (void**)&idx_dst);
+		for (int n = 0; n < draw_data->CmdListsCount; n++)
+		{
+			const ImDrawList* cmd_list = draw_data->CmdLists[n];
+			memcpy(idx_dst, cmd_list->IdxBuffer.Data, cmd_list->IdxBuffer.Size * sizeof(ImDrawIdx));
+			idx_dst += cmd_list->IdxBuffer.Size;
+		}
+		SDL_GpuUnmapTransferBuffer(v->Device, indexTransferBuffer);
+		SDL_GpuUploadToBuffer(indexCopyPass, indexTransferBuffer, bd->IndexBuffer, &indexBufferCopy, SDL_FALSE);
+		SDL_GpuEndCopyPass(indexCopyPass);
+
+		SDL_GpuSubmit(copyCommandBuffer);
+		SDL_GpuQueueDestroyTransferBuffer(v->Device, vertexTransferBuffer);
+		SDL_GpuQueueDestroyTransferBuffer(v->Device, indexTransferBuffer);
+
+	}
+	// Setup desired SDL_Gpu state
+	ImGui_ImplSDLGpu_SetupRenderState(draw_data, renderPass, fb_width, fb_height);
+
+	// Will project scissor/clipping rectangles into framebuffer space
+	ImVec2 clip_off = draw_data->DisplayPos;         // (0,0) unless using multi-viewports
+	ImVec2 clip_scale = draw_data->FramebufferScale; // (1,1) unless using retina display which are often (2,2)
+
+	int global_vtx_offset = 0;
+	int global_idx_offset = 0;
+	for (int n = 0; n < draw_data->CmdListsCount; n++)
+	{
+		const ImDrawList* cmd_list = draw_data->CmdLists[n];
+		for (int cmd_i = 0; cmd_i < cmd_list->CmdBuffer.Size; cmd_i++)
+		{
+			const ImDrawCmd* pcmd = &cmd_list->CmdBuffer[cmd_i];
+			if (pcmd->UserCallback != nullptr)
+			{
+				// User callback, registered via ImDrawList::AddCallback()
+				// (ImDrawCallback_ResetRenderState is a special callback value used by the user to request the renderer to reset render state.)
+				if (pcmd->UserCallback == ImDrawCallback_ResetRenderState)
+					ImGui_ImplSDLGpu_SetupRenderState(draw_data, renderPass, fb_width, fb_height);
+				else
+					pcmd->UserCallback(cmd_list, pcmd);
+			}
+			else
+			{
+				// Project scissor/clipping rectangles into framebuffer space
+				ImVec2 clip_min((pcmd->ClipRect.x - clip_off.x) * clip_scale.x, (pcmd->ClipRect.y - clip_off.y) * clip_scale.y);
+				ImVec2 clip_max((pcmd->ClipRect.z - clip_off.x) * clip_scale.x, (pcmd->ClipRect.w - clip_off.y) * clip_scale.y);
+
+
+				if (clip_min.x < 0.0f) { clip_min.x = 0.0f; }
+				if (clip_min.y < 0.0f) { clip_min.y = 0.0f; }
+				if (clip_max.x > fb_width) { clip_max.x = (float)fb_width; }
+				if (clip_max.y > fb_height) { clip_max.y = (float)fb_height; }
+				if (clip_max.x <= clip_min.x || clip_max.y <= clip_min.y)
+				{
+					continue;
+				}
+
+				SDL_GpuRect scissor;
+				scissor.x = (int32_t)clip_min.x;
+				scissor.y = (int32_t)clip_min.y;
+				scissor.w = (uint32_t)(clip_max.x - clip_min.x);
+				scissor.h = (uint32_t)(clip_max.y - clip_min.y);
+
+				SDL_GpuSetScissor(renderPass, &scissor);
+				SDL_GpuBindFragmentSamplers(renderPass, 0, (SDL_GpuTextureSamplerBinding*)pcmd->TextureId, 1);
+				SDL_GpuDrawInstancedPrimitives(renderPass, pcmd->VtxOffset + global_vtx_offset,
+					pcmd->IdxOffset + global_idx_offset, pcmd->ElemCount / 3, 1);
+			}
+		}
+		global_idx_offset += cmd_list->IdxBuffer.Size;
+		global_vtx_offset += cmd_list->VtxBuffer.Size;
+	}
+
+	SDL_GpuRect scissor = { 0, 0 ,  (uint32_t)fb_width, (uint32_t)fb_height };
+	SDL_GpuSetScissor(renderPass, &scissor);
+}
+
+bool ImGui_ImplSDLGpu_CreateFontsTexture() {
+	ImGuiIO& io = ImGui::GetIO();
+	ImGui_ImplSDLGpu_Data* bd = ImGui_ImplSDLGpu_GetBackendData();
+	ImGui_ImplSDLGpu_InitInfo* v = &bd->SDLGpuInitInfo;
+
+	unsigned char* pixels;
+	int width, height;
+	io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+
+	SDL_GpuTextureCreateInfo textureInfo = {};
+	textureInfo.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8;
+	textureInfo.width = width;
+	textureInfo.height = height;
+	textureInfo.depth = 1;
+	textureInfo.isCube = SDL_FALSE;
+	textureInfo.layerCount = 1;
+	textureInfo.levelCount = 1;
+	textureInfo.usageFlags = SDL_GPU_TEXTUREUSAGE_SAMPLER_BIT;
+	bd->FontImage = SDL_GpuCreateTexture(v->Device, &textureInfo);
+
+
+	SDL_GpuTransferBuffer* imageDataTransferBuffer = SDL_GpuCreateTransferBuffer(
+		v->Device,
+		SDL_GPU_TRANSFERUSAGE_TEXTURE,
+		SDL_GPU_TRANSFER_MAP_READ,
+		sizeof(unsigned char) * 4 * width * height
+	);
+
+	SDL_GpuBufferCopy copy;
+	copy.size = sizeof(unsigned char) * 4 * width * height;
+	copy.dstOffset = 0;
+	copy.srcOffset = 0;
+	SDL_GpuSetTransferData(
+		v->Device,
+		pixels,
+		imageDataTransferBuffer,
+		&copy,
+		SDL_FALSE
+	);
+
+	SDL_GpuTextureRegion region = {};
+	region.w = width;
+	region.h = height;
+	region.d = 1;
+	region.textureSlice.texture = bd->FontImage;
+	SDL_GpuBufferImageCopy imageCopy = {};
+	imageCopy.bufferOffset = 0;
+
+	SDL_GpuCommandBuffer* uploadCmdBuf = SDL_GpuAcquireCommandBuffer(v->Device);
+	SDL_GpuCopyPass* copyPass = SDL_GpuBeginCopyPass(uploadCmdBuf);
+
+	SDL_GpuUploadToTexture(copyPass, imageDataTransferBuffer, &region, &imageCopy, SDL_FALSE);
+	SDL_GpuEndCopyPass(copyPass);
+	SDL_GpuSubmit(uploadCmdBuf);
+	bd->FontTextureSamplerBindings.texture = bd->FontImage;
+	SDL_GpuQueueDestroyTransferBuffer(v->Device, imageDataTransferBuffer);
+	io.Fonts->SetTexID((ImTextureID)&bd->FontTextureSamplerBindings);
+
+	return true;
+}
+void ImGui_ImplSDLGpu_DestroyFontsTexture()
+{
+	ImGuiIO& io = ImGui::GetIO();
+	ImGui_ImplSDLGpu_Data* bd = ImGui_ImplSDLGpu_GetBackendData();
+	ImGui_ImplSDLGpu_InitInfo* v = &bd->SDLGpuInitInfo;
+
+	if (bd->FontImage) { SDL_GpuQueueDestroyTexture(v->Device, bd->FontImage); }
+}
+
 static void ImGui_ImplSDLGpu_CreateShaderModulesAndPipeline(SDL_GpuDevice* device, SDL_GpuSampleCount MSAASamples)
 {
 	ImGui_ImplSDLGpu_Data* bd = ImGui_ImplSDLGpu_GetBackendData();
@@ -191,6 +414,36 @@ static void ImGui_ImplSDLGpu_CreateShaderModulesAndPipeline(SDL_GpuDevice* devic
 	SDL_GpuQueueDestroyShader(device, FragmentShader);
 }
 
+bool ImGui_ImplSDLGpu_CreateDeviceObjects() {
+	ImGui_ImplSDLGpu_Data* bd = ImGui_ImplSDLGpu_GetBackendData();
+	ImGui_ImplSDLGpu_InitInfo* v = &bd->SDLGpuInitInfo;
+
+	SDL_GpuSamplerStateCreateInfo samplerInfo = {};
+	samplerInfo.magFilter = SDL_GPU_FILTER_LINEAR;
+	samplerInfo.minFilter = SDL_GPU_FILTER_LINEAR;
+	samplerInfo.addressModeU = SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
+	samplerInfo.addressModeV = SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
+	samplerInfo.addressModeW = SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
+	samplerInfo.minLod = -1000;
+	samplerInfo.maxLod = 1000;
+	samplerInfo.maxAnisotropy = 1.0f;
+	bd->FontSampler = SDL_GpuCreateSampler(v->Device, &samplerInfo);
+	bd->FontTextureSamplerBindings.sampler = bd->FontSampler;
+	ImGui_ImplSDLGpu_CreateShaderModulesAndPipeline(v->Device, v->MSAASamples);
+	return true;
+}
+void  ImGui_ImplSDLGpu_DestroyDeviceObjects()
+{
+	ImGui_ImplSDLGpu_Data* bd = ImGui_ImplSDLGpu_GetBackendData();
+	ImGui_ImplSDLGpu_InitInfo* v = &bd->SDLGpuInitInfo;
+	ImGui_ImplSDLGpu_DestroyFontsTexture();
+
+	if (bd->Pipeline) { SDL_GpuQueueDestroyGraphicsPipeline(v->Device, bd->Pipeline); }
+	if (bd->FontSampler) { SDL_GpuQueueDestroySampler(v->Device, bd->FontSampler); }
+	if (bd->VertexBuffer) { SDL_GpuQueueDestroyGpuBuffer(v->Device, bd->VertexBuffer); }
+	if (bd->IndexBuffer) { SDL_GpuQueueDestroyGpuBuffer(v->Device, bd->IndexBuffer); }
+}
+
 bool ImGui_ImplSDLGpu_Init(ImGui_ImplSDLGpu_InitInfo* info)
 {
 	ImGuiIO& io = ImGui::GetIO();
@@ -210,24 +463,6 @@ bool ImGui_ImplSDLGpu_Init(ImGui_ImplSDLGpu_InitInfo* info)
 
 	ImGui_ImplSDLGpu_CreateDeviceObjects();
 
-	return true;
-}
-bool ImGui_ImplSDLGpu_CreateDeviceObjects() {
-	ImGui_ImplSDLGpu_Data* bd = ImGui_ImplSDLGpu_GetBackendData();
-	ImGui_ImplSDLGpu_InitInfo* v = &bd->SDLGpuInitInfo;
-
-	SDL_GpuSamplerStateCreateInfo samplerInfo = {};
-	samplerInfo.magFilter = SDL_GPU_FILTER_LINEAR;
-	samplerInfo.minFilter = SDL_GPU_FILTER_LINEAR;
-	samplerInfo.addressModeU = SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
-	samplerInfo.addressModeV = SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
-	samplerInfo.addressModeW = SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
-	samplerInfo.minLod = -1000;
-	samplerInfo.maxLod = 1000;
-	samplerInfo.maxAnisotropy = 1.0f;
-	bd->FontSampler = SDL_GpuCreateSampler(v->Device, &samplerInfo);
-	bd->FontTextureSamplerBindings.sampler = bd->FontSampler;
-	ImGui_ImplSDLGpu_CreateShaderModulesAndPipeline(v->Device, v->MSAASamples);
 	return true;
 }
 
@@ -250,234 +485,6 @@ void ImGui_ImplSDLGpu_NewFrame()
 		ImGui_ImplSDLGpu_CreateFontsTexture();
 	}
 }
-void ImGui_ImplSDLGpu_RenderDrawData(ImDrawData* draw_data, SDL_GpuRenderPass* renderPass)
-{
 
-	int fb_width = (int)(draw_data->DisplaySize.x * draw_data->FramebufferScale.x);
-	int fb_height = (int)(draw_data->DisplaySize.y * draw_data->FramebufferScale.y);
-	if (fb_width <= 0 || fb_height <= 0)
-	{
-		return;
-	}
-
-	ImGui_ImplSDLGpu_Data* bd = ImGui_ImplSDLGpu_GetBackendData();
-	ImGui_ImplSDLGpu_InitInfo* v = &bd->SDLGpuInitInfo;
-
-	if (draw_data->TotalVtxCount > 0)
-	{
-		uint32_t vertexBufferSize = draw_data->TotalVtxCount * sizeof(ImDrawVert);
-		uint32_t indexBufferSize = draw_data->TotalIdxCount * sizeof(ImDrawIdx);
-
-		if (bd->VertexBuffer == NULL || bd->VertexBufferSize < vertexBufferSize) {
-			SDL_GpuQueueDestroyGpuBuffer(v->Device, bd->VertexBuffer);
-			SDL_GpuWait(v->Device);
-			bd->VertexBuffer = SDL_GpuCreateGpuBuffer(v->Device, SDL_GPU_BUFFERUSAGE_VERTEX_BIT, vertexBufferSize);
-			bd->VertexBufferSize = vertexBufferSize;
-		}
-		if (bd->IndexBuffer == NULL || bd->IndexBufferSize < indexBufferSize) {
-			SDL_GpuQueueDestroyGpuBuffer(v->Device, bd->IndexBuffer);
-			SDL_GpuWait(v->Device);
-			bd->IndexBuffer = SDL_GpuCreateGpuBuffer(v->Device, SDL_GPU_BUFFERUSAGE_INDEX_BIT, indexBufferSize);
-			bd->IndexBufferSize = indexBufferSize;
-		}
-
-
-		// Upload vertex/index data into a single contiguous GPU buffer
-		ImDrawVert* vtx_dst = nullptr;
-		ImDrawIdx* idx_dst = nullptr;
-
-		SDL_GpuCommandBuffer* copyCommandBuffer = SDL_GpuAcquireCommandBuffer(v->Device);
-
-		SDL_GpuCopyPass* vertexCopyPass = SDL_GpuBeginCopyPass(copyCommandBuffer);
-		SDL_GpuBufferCopy vertexBufferCopy;
-		vertexBufferCopy.size = vertexBufferSize;
-		vertexBufferCopy.srcOffset = 0;
-		vertexBufferCopy.dstOffset = 0;
-
-
-		SDL_GpuTransferBuffer* vertexTransferBuffer = SDL_GpuCreateTransferBuffer(v->Device,
-			SDL_GPU_TRANSFERUSAGE_BUFFER,
-			SDL_GPU_TRANSFER_MAP_WRITE,
-			vertexBufferSize);
-
-		SDL_GpuMapTransferBuffer(v->Device, vertexTransferBuffer, SDL_FALSE, (void**)&vtx_dst);
-		for (int n = 0; n < draw_data->CmdListsCount; n++)
-		{
-			const ImDrawList* cmd_list = draw_data->CmdLists[n];
-			memcpy(vtx_dst, cmd_list->VtxBuffer.Data, cmd_list->VtxBuffer.Size * sizeof(ImDrawVert));
-			vtx_dst += cmd_list->VtxBuffer.Size;
-		}
-		SDL_GpuUnmapTransferBuffer(v->Device, vertexTransferBuffer);
-		SDL_GpuUploadToBuffer(vertexCopyPass, vertexTransferBuffer, bd->VertexBuffer, &vertexBufferCopy, SDL_FALSE);
-		SDL_GpuEndCopyPass(vertexCopyPass);
-		
-		SDL_GpuCopyPass* indexCopyPass = SDL_GpuBeginCopyPass(copyCommandBuffer);
-
-		SDL_GpuBufferCopy indexBufferCopy = {};
-		indexBufferCopy.size = indexBufferSize;
-		indexBufferCopy.srcOffset = 0;
-		indexBufferCopy.dstOffset = 0;
-
-		SDL_GpuTransferBuffer* indexTransferBuffer = SDL_GpuCreateTransferBuffer(v->Device,
-			SDL_GPU_TRANSFERUSAGE_BUFFER,
-			SDL_GPU_TRANSFER_MAP_WRITE,
-			indexBufferSize);
-
-		SDL_GpuMapTransferBuffer(v->Device, indexTransferBuffer, SDL_FALSE, (void**)&idx_dst);
-		for (int n = 0; n < draw_data->CmdListsCount; n++)
-		{
-			const ImDrawList* cmd_list = draw_data->CmdLists[n];
-			memcpy(idx_dst, cmd_list->IdxBuffer.Data, cmd_list->IdxBuffer.Size * sizeof(ImDrawIdx));
-			idx_dst += cmd_list->IdxBuffer.Size;
-		}
-		SDL_GpuUnmapTransferBuffer(v->Device, indexTransferBuffer);
-		SDL_GpuUploadToBuffer(indexCopyPass, indexTransferBuffer, bd->IndexBuffer, &indexBufferCopy, SDL_FALSE);
-		SDL_GpuEndCopyPass(indexCopyPass);
-
-		SDL_GpuSubmit(copyCommandBuffer);
-		SDL_GpuQueueDestroyTransferBuffer(v->Device, vertexTransferBuffer);
-		SDL_GpuQueueDestroyTransferBuffer(v->Device, indexTransferBuffer);
-
-	}
-	// Setup desired SDL_Gpu state
-	ImGui_ImplSDLGpu_SetupRenderState(draw_data, renderPass, fb_width, fb_height);
-
-	// Will project scissor/clipping rectangles into framebuffer space
-	ImVec2 clip_off = draw_data->DisplayPos;         // (0,0) unless using multi-viewports
-	ImVec2 clip_scale = draw_data->FramebufferScale; // (1,1) unless using retina display which are often (2,2)
-
-	int global_vtx_offset = 0;
-	int global_idx_offset = 0;
-	for (int n = 0; n < draw_data->CmdListsCount; n++)
-	{
-		const ImDrawList* cmd_list = draw_data->CmdLists[n];
-		for (int cmd_i = 0; cmd_i < cmd_list->CmdBuffer.Size; cmd_i++)
-		{
-			const ImDrawCmd* pcmd = &cmd_list->CmdBuffer[cmd_i];
-			if (pcmd->UserCallback != nullptr)
-			{
-				// User callback, registered via ImDrawList::AddCallback()
-				// (ImDrawCallback_ResetRenderState is a special callback value used by the user to request the renderer to reset render state.)
-				if (pcmd->UserCallback == ImDrawCallback_ResetRenderState)
-					ImGui_ImplSDLGpu_SetupRenderState(draw_data, renderPass, fb_width, fb_height);
-				else
-					pcmd->UserCallback(cmd_list, pcmd);
-			}
-			else
-			{
-				// Project scissor/clipping rectangles into framebuffer space
-				ImVec2 clip_min((pcmd->ClipRect.x - clip_off.x) * clip_scale.x, (pcmd->ClipRect.y - clip_off.y) * clip_scale.y);
-				ImVec2 clip_max((pcmd->ClipRect.z - clip_off.x) * clip_scale.x, (pcmd->ClipRect.w - clip_off.y) * clip_scale.y);
-
-
-				if (clip_min.x < 0.0f) { clip_min.x = 0.0f; }
-				if (clip_min.y < 0.0f) { clip_min.y = 0.0f; }
-				if (clip_max.x > fb_width) { clip_max.x = (float)fb_width; }
-				if (clip_max.y > fb_height) { clip_max.y = (float)fb_height; }
-				if (clip_max.x <= clip_min.x || clip_max.y <= clip_min.y)
-				{
-					continue;
-				}
-
-				SDL_GpuRect scissor;
-				scissor.x = (int32_t)clip_min.x;
-				scissor.y = (int32_t)clip_min.y;
-				scissor.w = (uint32_t)(clip_max.x - clip_min.x);
-				scissor.h = (uint32_t)(clip_max.y - clip_min.y);
-
-				SDL_GpuSetScissor(renderPass, &scissor);
-				SDL_GpuBindFragmentSamplers(renderPass,0, (SDL_GpuTextureSamplerBinding*)pcmd->TextureId, 1);
-				SDL_GpuDrawInstancedPrimitives(renderPass, pcmd->VtxOffset + global_vtx_offset,
-					pcmd->IdxOffset + global_idx_offset, pcmd->ElemCount / 3, 1);
-			}
-		}
-		global_idx_offset += cmd_list->IdxBuffer.Size;
-		global_vtx_offset += cmd_list->VtxBuffer.Size;
-	}
-
-	SDL_GpuRect scissor = { 0, 0 ,  (uint32_t)fb_width, (uint32_t)fb_height };
-	SDL_GpuSetScissor(renderPass, &scissor);
-}
-
-bool ImGui_ImplSDLGpu_CreateFontsTexture() {
-	ImGuiIO& io = ImGui::GetIO();
-	ImGui_ImplSDLGpu_Data* bd = ImGui_ImplSDLGpu_GetBackendData();
-	ImGui_ImplSDLGpu_InitInfo* v = &bd->SDLGpuInitInfo;
-
-	unsigned char* pixels;
-	int width, height;
-	io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
-
-	SDL_GpuTextureCreateInfo textureInfo = {};
-	textureInfo.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8;
-	textureInfo.width = width;
-	textureInfo.height = height;
-	textureInfo.depth = 1;
-	textureInfo.isCube = SDL_FALSE;
-	textureInfo.layerCount = 1;
-	textureInfo.levelCount = 1;
-	textureInfo.usageFlags = SDL_GPU_TEXTUREUSAGE_SAMPLER_BIT;
-	bd->FontImage = SDL_GpuCreateTexture(v->Device, &textureInfo);
-
-
-	SDL_GpuTransferBuffer* imageDataTransferBuffer = SDL_GpuCreateTransferBuffer(
-		v->Device,
-		SDL_GPU_TRANSFERUSAGE_TEXTURE,
-		SDL_GPU_TRANSFER_MAP_READ,
-		sizeof(unsigned char) * 4 * width * height
-	);
-
-	SDL_GpuBufferCopy copy;
-	copy.size = sizeof(unsigned char) * 4 * width * height;
-	copy.dstOffset = 0;
-	copy.srcOffset = 0;
-	SDL_GpuSetTransferData(
-		v->Device,
-		pixels,
-		imageDataTransferBuffer,
-		&copy,
-		SDL_FALSE
-	);
-
-	SDL_GpuTextureRegion region = {};
-	region.w = width;
-	region.h = height;
-	region.d = 1;
-	region.textureSlice.texture = bd->FontImage;
-	SDL_GpuBufferImageCopy imageCopy = {};
-	imageCopy.bufferOffset = 0;
-
-	SDL_GpuCommandBuffer* uploadCmdBuf = SDL_GpuAcquireCommandBuffer(v->Device);
-	SDL_GpuCopyPass* copyPass = SDL_GpuBeginCopyPass(uploadCmdBuf);
-
-	SDL_GpuUploadToTexture(copyPass, imageDataTransferBuffer, &region, &imageCopy, SDL_FALSE);
-	SDL_GpuEndCopyPass(copyPass);
-	SDL_GpuSubmit(uploadCmdBuf);
-	bd->FontTextureSamplerBindings.texture = bd->FontImage;
-	SDL_GpuQueueDestroyTransferBuffer(v->Device, imageDataTransferBuffer);
-	io.Fonts->SetTexID((ImTextureID)&bd->FontTextureSamplerBindings);
-
-	return true;
-}
-void ImGui_ImplSDLGpu_DestroyFontsTexture()
-{
-	ImGuiIO& io = ImGui::GetIO();
-	ImGui_ImplSDLGpu_Data* bd = ImGui_ImplSDLGpu_GetBackendData();
-	ImGui_ImplSDLGpu_InitInfo* v = &bd->SDLGpuInitInfo;
-
-	if (bd->FontImage) { SDL_GpuQueueDestroyTexture(v->Device, bd->FontImage); }
-}
-
-void  ImGui_ImplSDLGpu_DestroyDeviceObjects()
-{
-	ImGui_ImplSDLGpu_Data* bd = ImGui_ImplSDLGpu_GetBackendData();
-	ImGui_ImplSDLGpu_InitInfo* v = &bd->SDLGpuInitInfo;
-	ImGui_ImplSDLGpu_DestroyFontsTexture();
-
-	if (bd->Pipeline) { SDL_GpuQueueDestroyGraphicsPipeline(v->Device, bd->Pipeline); }
-	if (bd->FontSampler) { SDL_GpuQueueDestroySampler(v->Device, bd->FontSampler); }
-	if (bd->VertexBuffer) { SDL_GpuQueueDestroyGpuBuffer(v->Device, bd->VertexBuffer); }
-	if (bd->IndexBuffer) { SDL_GpuQueueDestroyGpuBuffer(v->Device, bd->IndexBuffer); }
-}
 
 #endif

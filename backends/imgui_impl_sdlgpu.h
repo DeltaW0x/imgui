@@ -1,19 +1,21 @@
 #pragma once
 #ifndef IMGUI_DISABLE
-#include "imgui.h"      // IMGUI_IMPL_API
+#include "imgui.h" // IMGUI_IMPL_API
 
 enum SDL_GpuSampleCount;
+enum SDL_GpuColorSpace;
+enum SDL_GpuPresentMode;
 struct SDL_GpuDevice;
 struct SDL_GpuRenderPass;
+struct SDL_GpuGraphicsPipeline;
 struct SDL_Window;
-struct SDL_GpuTextureSamplerBinding;
-struct SDL_GpuSampler;
-struct SDL_GpuTexture;
 
 struct ImGui_ImplSDLGpu_InitInfo
 {
-    SDL_GpuDevice*                  Device;
-    SDL_Window*                     Window;
+    SDL_GpuDevice*                  Device          = NULL;
+    SDL_Window*                     Window          = NULL;
+    SDL_GpuColorSpace               WindowColorspace;
+    SDL_GpuPresentMode              WindowPresentMode;
     SDL_GpuSampleCount              MSAASamples;
 };
 
@@ -217,7 +219,7 @@ const unsigned char shader_frag_spv[] = {
   0x38, 0x00, 0x01, 0x00
 };
 
-const unsigned char shader_vert_dxcb[] ={
+const unsigned char shader_vert_dxcb[] = {
      68,  88,  66,  67, 214, 146,
      46,  49,  25, 230, 171, 209,
      97,  79, 138,  27,  28, 170,
@@ -392,7 +394,7 @@ const unsigned char shader_vert_dxcb[] ={
       0,   0,   0,   0,   0,   0,
       0,   0,   0,   0
 };
-const unsigned char shader_frag_dxcb[] ={
+const unsigned char shader_frag_dxcb[] = {
      68,  88,  66,  67,  52,  54,
      82,  14, 217, 189,  57,  80,
      53,  43, 120, 119, 217,  87,
