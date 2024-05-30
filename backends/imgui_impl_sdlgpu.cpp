@@ -508,7 +508,7 @@ void ImGui_ImplSDLGpu_Shutdown()
 	IM_ASSERT(bd != nullptr && "No renderer backend to shutdown, or already shutdown?");
 	ImGuiIO& io = ImGui::GetIO();
 
-
+	ImGui_ImplSDLGpu_DestroyDeviceObjects();
 
 	ImGuiViewport* main_viewport = ImGui::GetMainViewport();
 	if (ImGui_ImplSDLGpu_ViewportData* vd = (ImGui_ImplSDLGpu_ViewportData*)main_viewport->RendererUserData) {
@@ -516,7 +516,7 @@ void ImGui_ImplSDLGpu_Shutdown()
 	}
 	main_viewport->RendererUserData = nullptr;
 
-	ImGui_ImplSDLGpu_DestroyDeviceObjects();
+	ImGui_ImplSDLGpu_ShutdownPlatformInterface();
 
 	io.BackendRendererName = nullptr;
 	io.BackendRendererUserData = nullptr;
@@ -550,7 +550,6 @@ static void ImGui_ImplSDLGpu_CreateWindow(ImGuiViewport* viewport) {
 }
 static void ImGui_ImplSDLGpu_DestroyWindow(ImGuiViewport* viewport) {
 	ImGui_ImplSDLGpu_Data* bd = ImGui_ImplSDLGpu_GetBackendData();
-	ImGui_ImplSDLGpu_InitInfo* v = &bd->SDLGpuInitInfo;
 
 	if (ImGui_ImplSDLGpu_ViewportData* vd = (ImGui_ImplSDLGpu_ViewportData*)viewport->RendererUserData)
 	{
@@ -558,7 +557,6 @@ static void ImGui_ImplSDLGpu_DestroyWindow(ImGuiViewport* viewport) {
 		if (vd->WindowOwned) {
 			SDL_GpuWait(v->Device);
 			SDL_GpuUnclaimWindow(v->Device, vd->Window);
-			SDL_DestroyWindow(vd->Window);
 		}
 		IM_DELETE(vd);
 	}
