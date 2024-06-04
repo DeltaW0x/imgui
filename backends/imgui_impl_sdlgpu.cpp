@@ -94,24 +94,24 @@ void ImGui_ImplSDLGpu_RenderDrawData(ImDrawData *draw_data, SDL_GpuRenderPass *r
         uint32_t indexBufferSize = draw_data->TotalIdxCount * sizeof(ImDrawIdx);
 
         if (bd->VertexBuffer == NULL) {
-            bd->VertexBuffer = SDL_GpuCreateGpuBuffer(v->Device, SDL_GPU_BUFFERUSAGE_VERTEX_BIT, vertexBufferSize);
+            bd->VertexBuffer = SDL_GpuCreateBuffer(v->Device, SDL_GPU_BUFFERUSAGE_VERTEX_BIT, vertexBufferSize);
             bd->VertexBufferSize = vertexBufferSize;
         }
         if (bd->IndexBuffer == NULL) {
-            bd->IndexBuffer = SDL_GpuCreateGpuBuffer(v->Device, SDL_GPU_BUFFERUSAGE_INDEX_BIT, indexBufferSize);
+            bd->IndexBuffer = SDL_GpuCreateBuffer(v->Device, SDL_GPU_BUFFERUSAGE_INDEX_BIT, indexBufferSize);
             bd->IndexBufferSize = indexBufferSize;
         }
 
         if (bd->VertexBuffer != NULL || bd->VertexBufferSize < vertexBufferSize) {
-            SDL_GpuReleaseGpuBuffer(v->Device, bd->VertexBuffer);
+            SDL_GpuReleaseBuffer(v->Device, bd->VertexBuffer);
             SDL_GpuWait(v->Device);
-            bd->VertexBuffer = SDL_GpuCreateGpuBuffer(v->Device, SDL_GPU_BUFFERUSAGE_VERTEX_BIT, vertexBufferSize);
+            bd->VertexBuffer = SDL_GpuCreateBuffer(v->Device, SDL_GPU_BUFFERUSAGE_VERTEX_BIT, vertexBufferSize);
             bd->VertexBufferSize = vertexBufferSize;
         }
         if (bd->IndexBuffer != NULL || bd->IndexBufferSize < indexBufferSize) {
-            SDL_GpuReleaseGpuBuffer(v->Device, bd->IndexBuffer);
+            SDL_GpuReleaseBuffer(v->Device, bd->IndexBuffer);
             SDL_GpuWait(v->Device);
-            bd->IndexBuffer = SDL_GpuCreateGpuBuffer(v->Device, SDL_GPU_BUFFERUSAGE_INDEX_BIT, indexBufferSize);
+            bd->IndexBuffer = SDL_GpuCreateBuffer(v->Device, SDL_GPU_BUFFERUSAGE_INDEX_BIT, indexBufferSize);
             bd->IndexBufferSize = indexBufferSize;
         }
 
@@ -217,7 +217,7 @@ void ImGui_ImplSDLGpu_RenderDrawData(ImDrawData *draw_data, SDL_GpuRenderPass *r
 
                 SDL_GpuSetScissor(renderPass, &scissor);
                 SDL_GpuBindFragmentSamplers(renderPass, 0, (SDL_GpuTextureSamplerBinding *) pcmd->TextureId, 1);
-                SDL_GpuDrawInstancedPrimitives(renderPass, pcmd->VtxOffset + global_vtx_offset,
+                SDL_GpuDrawIndexedPrimitives(renderPass, pcmd->VtxOffset + global_vtx_offset,
                                                pcmd->IdxOffset + global_idx_offset, pcmd->ElemCount / 3, 1);
             }
         }
@@ -419,15 +419,15 @@ static void ImGui_ImplSDLGpu_CreatePipeline(SDL_GpuDevice *device, SDL_GpuSample
     pipelineInfo.depthStencilState = {};
     pipelineInfo.attachmentInfo = attachmentInfo;
 
-    pipelineInfo.vertexResourceLayoutInfo.samplerCount = 0;
-    pipelineInfo.vertexResourceLayoutInfo.storageTextureCount = 0;
-    pipelineInfo.vertexResourceLayoutInfo.storageBufferCount = 0;
-    pipelineInfo.vertexResourceLayoutInfo.uniformBufferCount = 1;
+    pipelineInfo.vertexResourceInfo.samplerCount = 0;
+    pipelineInfo.vertexResourceInfo.storageTextureCount = 0;
+    pipelineInfo.vertexResourceInfo.storageBufferCount = 0;
+    pipelineInfo.vertexResourceInfo.uniformBufferCount = 1;
 
-    pipelineInfo.fragmentResourceLayoutInfo.samplerCount = 1;
-    pipelineInfo.fragmentResourceLayoutInfo.storageTextureCount = 0;
-    pipelineInfo.fragmentResourceLayoutInfo.storageBufferCount = 0;
-    pipelineInfo.fragmentResourceLayoutInfo.uniformBufferCount = 0;
+    pipelineInfo.fragmentResourceInfo.samplerCount = 1;
+    pipelineInfo.fragmentResourceInfo.storageTextureCount = 0;
+    pipelineInfo.fragmentResourceInfo.storageBufferCount = 0;
+    pipelineInfo.fragmentResourceInfo.uniformBufferCount = 0;
 
     pipelineInfo.blendConstants[0] = 0;
     pipelineInfo.blendConstants[1] = 0;
@@ -441,7 +441,7 @@ bool ImGui_ImplSDLGpu_CreateDeviceObjects() {
     ImGui_ImplSDLGpu_Data *bd = ImGui_ImplSDLGpu_GetBackendData();
     ImGui_ImplSDLGpu_InitInfo *v = &bd->SDLGpuInitInfo;
 
-    SDL_GpuSamplerStateCreateInfo samplerInfo = {};
+    SDL_GpuSamplerCreateInfo samplerInfo = {};
     samplerInfo.magFilter = SDL_GPU_FILTER_LINEAR;
     samplerInfo.minFilter = SDL_GPU_FILTER_LINEAR;
     samplerInfo.addressModeU = SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
@@ -466,8 +466,8 @@ void ImGui_ImplSDLGpu_DestroyDeviceObjects() {
     if (bd->VertexShader) { SDL_GpuReleaseShader(v->Device, bd->VertexShader); }
     if (bd->FragmentShader) { SDL_GpuReleaseShader(v->Device, bd->FragmentShader); }
     if (bd->FontSampler) { SDL_GpuReleaseSampler(v->Device, bd->FontSampler); }
-    if (bd->VertexBuffer) { SDL_GpuReleaseGpuBuffer(v->Device, bd->VertexBuffer); }
-    if (bd->IndexBuffer) { SDL_GpuReleaseGpuBuffer(v->Device, bd->IndexBuffer); }
+    if (bd->VertexBuffer) { SDL_GpuReleaseBuffer(v->Device, bd->VertexBuffer); }
+    if (bd->IndexBuffer) { SDL_GpuReleaseBuffer(v->Device, bd->IndexBuffer); }
 }
 
 bool ImGui_ImplSDLGpu_Init(ImGui_ImplSDLGpu_InitInfo *info) {
