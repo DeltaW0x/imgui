@@ -217,8 +217,7 @@ void ImGui_ImplSDLGpu_RenderDrawData(ImDrawData *draw_data, SDL_GpuRenderPass *r
 
                 SDL_GpuSetScissor(renderPass, &scissor);
                 SDL_GpuBindFragmentSamplers(renderPass, 0, (SDL_GpuTextureSamplerBinding *) pcmd->TextureId, 1);
-                SDL_GpuDrawIndexedPrimitives(renderPass, pcmd->VtxOffset + global_vtx_offset,
-                                               pcmd->IdxOffset + global_idx_offset, pcmd->ElemCount / 3, 1);
+                SDL_GpuDrawIndexedPrimitives(renderPass, pcmd->VtxOffset + global_vtx_offset,pcmd->IdxOffset + global_idx_offset, pcmd->ElemCount / 3, 1);
             }
         }
         global_idx_offset += cmd_list->IdxBuffer.Size;
@@ -533,8 +532,6 @@ static void ImGui_ImplSDLGpu_CreateWindow(ImGuiViewport *viewport) {
     ImGui_ImplSDLGpu_Data *bd = ImGui_ImplSDLGpu_GetBackendData();
     ImGui_ImplSDLGpu_InitInfo *v = &bd->SDLGpuInitInfo;
     ImGui_ImplSDLGpu_ViewportData *vd = IM_NEW(ImGui_ImplSDLGpu_ViewportData)();
-    ImGuiPlatformIO &platform_io = ImGui::GetPlatformIO();
-    platform_io.Platform_CreateWindow(viewport);
     vd->Window = (SDL_Window *) viewport->PlatformHandle;
     vd->WindowOwned = true;
     viewport->RendererUserData = vd;
@@ -551,8 +548,10 @@ static void ImGui_ImplSDLGpu_DestroyWindow(ImGuiViewport *viewport) {
     if (ImGui_ImplSDLGpu_ViewportData *vd = (ImGui_ImplSDLGpu_ViewportData *) viewport->RendererUserData) {
         ImGui_ImplSDLGpu_InitInfo *v = &bd->SDLGpuInitInfo;
         if (vd->WindowOwned) {
+            ImGuiPlatformIO &platform_io = ImGui::GetPlatformIO();
             SDL_GpuWait(v->Device);
             SDL_GpuUnclaimWindow(v->Device, vd->Window);
+            platform_io.Platform_DestroyWindow(viewport);
         }
         IM_DELETE(vd);
     }

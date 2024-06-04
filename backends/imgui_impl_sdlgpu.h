@@ -508,6 +508,7 @@ const unsigned char shader_frag_dxcb[] = {
       0,   0,   0,   0,   0,   0,
       0,   0,   0,   0
 };
+
 #if defined(SDL_PLATFORM_IOS)
 #if TARGET_OS_SIMULATOR
 const unsigned char shader_vert_metallib[] = {
