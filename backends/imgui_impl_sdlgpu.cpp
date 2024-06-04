@@ -548,10 +548,8 @@ static void ImGui_ImplSDLGpu_DestroyWindow(ImGuiViewport *viewport) {
     if (ImGui_ImplSDLGpu_ViewportData *vd = (ImGui_ImplSDLGpu_ViewportData *) viewport->RendererUserData) {
         ImGui_ImplSDLGpu_InitInfo *v = &bd->SDLGpuInitInfo;
         if (vd->WindowOwned) {
-            ImGuiPlatformIO &platform_io = ImGui::GetPlatformIO();
             SDL_GpuWait(v->Device);
             SDL_GpuUnclaimWindow(v->Device, vd->Window);
-            platform_io.Platform_DestroyWindow(viewport);
         }
         IM_DELETE(vd);
     }
@@ -571,14 +569,14 @@ static void ImGui_ImplSDLGpu_RenderWindow(ImGuiViewport *viewport, void *) {
     Uint32 w, h;
     SDL_GpuTexture *swapchainTexture = SDL_GpuAcquireSwapchainTexture(cmdbuf, vd->Window, &w, &h);
 
-    if (!swapchainTexture) {
+    if (swapchainTexture != NULL) {
         SDL_GpuColorAttachmentInfo colorAttachmentInfo = {};
         colorAttachmentInfo.textureSlice.texture = swapchainTexture;
         colorAttachmentInfo.clearColor = SDL_GpuColor{0.16f, 0.16f, 0.16f, 1.0f};
         colorAttachmentInfo.loadOp = SDL_GPU_LOADOP_CLEAR;
         colorAttachmentInfo.storeOp = SDL_GPU_STOREOP_STORE;
 
-        SDL_GpuRenderPass *renderPass = SDL_GpuBeginRenderPass(cmdbuf, &colorAttachmentInfo, 1, nullptr);
+        SDL_GpuRenderPass *renderPass = SDL_GpuBeginRenderPass(cmdbuf, &colorAttachmentInfo, 1, NULL);
         ImGui_ImplSDLGpu_RenderDrawData(viewport->DrawData, renderPass, &bd->SecondaryPipeline);
         SDL_GpuEndRenderPass(renderPass);
     }
