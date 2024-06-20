@@ -36,20 +36,82 @@ HOW TO UPDATE?
 - Please report any issue!
 
 -----------------------------------------------------------------------
- VERSION 1.90.8 WIP (In Progress)
+ VERSION 1.90.9 WIP (In Progress)
 -----------------------------------------------------------------------
 
 Breaking changes:
 
+- Removed old nested structure: renaming ImGuiStorage::ImGuiStoragePair type to
+  ImGuiStoragePair (simpler for many languages). No significant nested type left.
+- Style: renamed tab colors for clarity and consistency with other changes: (#261, #351)
+  - ImGuiCol_TabActive          -> ImGuiCol_TabSelected
+  - ImGuiCol_TabUnfocused       -> ImGuiCol_TabDimmed
+  - ImGuiCol_TabUnfocusedActive -> ImGuiCol_TabDimmedSelected
+  Kept inline redirecting enums (will obsolete).
+
 Other changes:
 
+- IO: do not disable io.ConfigWindowsResizeFromEdges (which allow resizing from borders
+  and lower-left corner) when ImGuiBackendFlags_HasMouseCursors is not set by backend.
+  The initial reasoning is that resizing from borders feels better when correct mouse cursor
+  shape change as honored by backends. Keeping this enabling will hopefully increase pressure
+  on third-party backends to set ImGuiBackendFlags_HasMouseCursors and honor changes of
+  ImGui::GetMouseCursor() value. (#1495)
+- TabBar, Style: added ImGuiTabBarFlags_DrawSelectedOverline option to draw an horizontal
+  line over selected tabs to increase visibility. This is used by docking.
+  Added corresponding ImGuiCol_TabSelectedOverline and ImGuiCol_TabDimmedSelectedOverline colors.
+- Examples: GLFW+Vulkan, SDL+Vulkan: handle swap chain resize even without Vulkan
+  returning VK_SUBOPTIMAL_KHR, which doesn't seem to happen on Wayland. (#7671)
+  [@AndreiNego, @ocornut]
+
+Docking+Viewports Branch:
+
+- Backends: SDL3: Update for introduction of SDL_GLContext from void*. (#7701, #7702)
+  [@bcsanches]
+
+
+-----------------------------------------------------------------------
+ VERSION 1.90.8 (Released 2024-06-06)
+-----------------------------------------------------------------------
+
+Decorated log and release notes: https://github.com/ocornut/imgui/releases/tag/v1.90.8
+
+Breaking changes:
+
+- Reordered various ImGuiInputTextFlags values. This should NOT be breaking unless
+  you are using generated headers that have values not matching the main library.
+- Removed ImGuiButtonFlags_MouseButtonDefault_ = ImGuiButtonFlags_MouseButtonLeft
+  from imgui.h, was mostly unused and misleading.
+
+Other changes:
+
+- Inputs: fixed IsMouseClicked(..., repeat=true); broken in 1.90.7 on 2024/05/22.
+  (due to an internal api parameter swap, repeat wouldn't be honored and
+  ownership would be accidentally checked even though this api is meant to not
+  check ownership). (#7657) [@korenkonder]
 - Windows: fixed altering FramePadding mid-frame not correctly affecting logic
   responsible for honoring io.ConfigWindowsMoveFromTitleBarOnly. (#7576, #899)
 - Scrollbar: made scrolling logic more standard: clicking above or below the
   grab scrolls by one page, holding mouse button repeats scrolling. (#7328, #150)
+- Scrollbar: fixed miscalculation of vertical scrollbar visibility when required
+  solely by the presence of an horizontal scrollbar. (#1574)
+- InputScalar, InputInt, InputFloat: added ImGuiInputTextFlags_ParseEmptyRefVal
+  to parse an empty field as zero-value. (#7305) [@supermerill, @ocornut]
+- InputScalar, InputInt, InputFloat: added ImGuiInputTextFlags_DisplayEmptyRefVal
+  to display a zero-value as empty. (#7305) [@supermerill, @ocornut]
+- Popups: fixed an issue preventing to close a popup opened over a modal by clicking
+  over void (it required clicking over the visible part of the modal). (#7654)
+- Tables: fixed an issue where ideal size reported to parent container wouldn't
+  correctly take account of inner scrollbar, affecting potential auto-resize of
+  parent container. (#7651)
+- Tables: fixed a bug where after disabling the ScrollY flag for a table,
+  previous scrollbar width would be accounted for. (#5920)
 - Combo: simplified Combo() API uses a list clipper (due to its api it wasn't
   previously trivial before we added clipper.IncludeItemByIndex() function).
+- Disabled: nested tooltips or other non-child window within a BeginDisabled()
+  block disable the disabled state. (#211, #7640)
 - Misc: made ImGuiDir and ImGuiSortDirection stronger-typed enums.
+- Backends: SDL3: Update for SDL_SYSTEM_CURSOR_xxx api renames. (#7653)
 
 
 -----------------------------------------------------------------------
@@ -156,7 +218,6 @@ versions of IsKeyPressed(), IsKeyChordPressed(), IsMouseClicked() prior to this 
 - For several reasons those changes makes sense. They were all made before making some of
   those API public. Only past users of imgui_internal.h with the extra parameters will be affected.
   Added asserts for valid flags in various functions to detect _some_ misuses, BUT NOT ALL.
-
 
 Docking+Viewports Branch:
 
